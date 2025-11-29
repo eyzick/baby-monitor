@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Baby Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Baby Monitor Stream</h1>
+    
+    <div id="motion-alert" class="alert" style="display: none;">
+        ⚠️ MOTION DETECTED ⚠️
+    </div>
+
+    <div class="video-container">
+        <img src="{{ url_for('video_feed') }}" alt="Baby Monitor Stream">
+    </div>
+    
+    <div class="audio-container" style="margin-top: 15px; text-align: center;">
+        <button id="start-audio-btn" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
+            🔈 Start Audio
+        </button>
+        <button id="stop-audio-btn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; display: none; background-color: #f44336; color: white; border: none;">
+            🔇 Stop Audio
+        </button>
+        <p id="audio-status" style="font-size: 0.8em; color: #666; margin-top: 5px;">
+            (Requires user interaction)
+        </p>
+    </div>
+
+    <div class="status">
+        Live Stream from Raspberry Pi
+    </div>
+
+    <script>
+        // --- Motion Detection ---
+        function checkMotion() {
+            fetch('/motion_status')
+                .then(response => response.json())
+                .then(data => {
+                    const alertBox = document.getElementById('motion-alert');
+                    if (data.motion) {
+                        alertBox.style.display = 'block';
+                        document.body.classList.add('alert-active');
+                    } else {
+                        alertBox.style.display = 'none';
+                        document.body.classList.remove('alert-active');
+                    }
+                })
+                .catch(error => console.error('Error checking motion:', error));
+        }
+        setInterval(checkMotion, 1000);
+
+
+        // --- PCM Audio Player ---
+        let audioContext;
+        let isPlaying = false;
+        let abortController;
+
+        const startBtn = document.getElementById('start-audio-btn');
+        const stopBtn = document.getElementById('stop-audio-btn');
+        const statusText = document.getElementById('audio-status');
+
+        async function startAudio() {
+            try {
+                if (!window.AudioContext && !window.webkitAudioContext) {
+                    statusText.textContent = "Web Audio API not supported on this browser.";
+                    return;
+                }
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    sampleRate: 44100,
+                });
+                
+                isPlaying = true;
+                abortController = new AbortController();
+                
+                startBtn.style.display = 'none';
+                stopBtn.style.display = 'inline-block';
+                statusText.textContent = "Connecting to stream...";
+
+                const response = await fetch('/audio_feed', {
+                    signal: abortController.signal
+                });
+
+                if (!response.body) {
+                    throw new Error("ReadableStream not supported by this browser.");
+                }
+
+                const reader = response.body.getReader();
+                statusText.textContent = "Live Audio Playing";
+                
+                let nextStartTime = audioContext.currentTime;
+
+                while (isPlaying) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    if (value) {
+                        playPcmChunk(value.buffer, nextStartTime);
+                        // Schedule next chunk
+                        // Calculate duration of this chunk: bytes / (channels * 2 bytes per sample) / sampleRate
+                        const duration = value.byteLength / 2 / 44100; 
+                        nextStartTime += duration;
+                        
+                        // If we fell behind (network lag), jump to now
+                        if (nextStartTime < audioContext.currentTime) {
+                            nextStartTime = audioContext.currentTime;
+                        }
+                    }
+                }
+
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    console.log('Audio stream stopped by user');
+                } else {
+                    console.error('Audio Error:', err);
+                    statusText.textContent = "Audio Error: " + err.message;
+                    stopAudio();
+                }
+            }
+        }
+
+        function playPcmChunk(arrayBuffer, startTime) {
+            // Convert 16-bit integer PCM to Float32
+            const int16Array = new Int16Array(arrayBuffer);
+            const float32Array = new Float32Array(int16Array.length);
+            
+            for (let i = 0; i < int16Array.length; i++) {
+                // Normalize to -1.0 to 1.0
+                float32Array[i] = int16Array[i] / 32768; 
+            }
+
+            const buffer = audioContext.createBuffer(1, float32Array.length, 44100);
+            buffer.getChannelData(0).set(float32Array);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            source.start(startTime);
+        }
+
+        function stopAudio() {
+            isPlaying = false;
+            if (abortController) abortController.abort();
+            if (audioContext) audioContext.close();
+            
+            startBtn.style.display = 'inline-block';
+            stopBtn.style.display = 'none';
+            statusText.textContent = "Audio Stopped";
+        }
+
+        startBtn.addEventListener('click', startAudio);
+        stopBtn.addEventListener('click', stopAudio);
+
+    </script>
+</body>
+</html>
