@@ -1,4 +1,18 @@
+# Core Flask Application
 Flask==3.0.0
+
+# Video Processing
 opencv-python-headless==4.8.1.78
 numpy==1.26.2
+
+# Audio Capture
 pyaudio==0.2.14
+
+# ML & Signal Processing
+scipy==1.11.4
+
+# TensorFlow Lite for ML inference (choose one based on your platform)
+# For Raspberry Pi (ARM):
+# tflite-runtime==2.14.0
+# For other platforms:
+tensorflow==2.15.0
