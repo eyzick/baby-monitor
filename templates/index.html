@@ -3,69 +3,379 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Baby Monitor</title>
+    <title>Baby Monitor - ML Enhanced</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>Baby Monitor Stream</h1>
-    
-    <div id="motion-alert" class="alert" style="display: none;">
-        ⚠️ MOTION DETECTED ⚠️
-    </div>
+    <div class="monitor-container">
+        <header class="header">
+            <h1>👶 Baby Monitor</h1>
+            <div class="status-badge" id="connection-status">
+                <span class="status-dot"></span>
+                <span>Connected</span>
+            </div>
+        </header>
 
-    <div class="video-container">
-        <img src="{{ url_for('video_feed') }}" alt="Baby Monitor Stream">
-    </div>
-    
-    <div class="audio-container" style="margin-top: 15px; text-align: center;">
-        <button id="start-audio-btn" style="padding: 10px 20px; font-size: 16px; cursor: pointer;">
-            🔈 Start Audio
-        </button>
-        <button id="stop-audio-btn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; display: none; background-color: #f44336; color: white; border: none;">
-            🔇 Stop Audio
-        </button>
-        <p id="audio-status" style="font-size: 0.8em; color: #666; margin-top: 5px;">
-            (Requires user interaction)
-        </p>
-    </div>
+        <!-- ML Alert Banner -->
+        <div id="ml-alert-banner" class="alert-banner hidden">
+            <div class="alert-content">
+                <span class="alert-icon">⚠️</span>
+                <span class="alert-message" id="alert-message">Alert</span>
+                <span class="alert-confidence" id="alert-confidence"></span>
+            </div>
+            <button class="acknowledge-btn" onclick="acknowledgeAlert()">Dismiss</button>
+        </div>
 
-    <div class="status">
-        Live Stream from Raspberry Pi
+        <!-- Video Feed -->
+        <div class="video-section">
+            <div class="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Baby Monitor Stream" id="video-feed">
+                <div class="video-overlay">
+                    <div class="overlay-item" id="breathing-indicator">
+                        <span class="indicator-icon">💨</span>
+                        <span class="indicator-text">Breathing: --</span>
+                    </div>
+                    <div class="overlay-item" id="motion-indicator">
+                        <span class="indicator-icon">🏃</span>
+                        <span class="indicator-text">Motion: Idle</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ML Status Dashboard -->
+        <div class="dashboard">
+            <!-- Audio Detection Card -->
+            <div class="status-card" id="audio-card">
+                <div class="card-header">
+                    <span class="card-icon">🔊</span>
+                    <span class="card-title">Audio Detection</span>
+                </div>
+                <div class="card-body">
+                    <div class="detection-status" id="audio-status">
+                        <span class="status-label">Status</span>
+                        <span class="status-value" id="audio-status-value">Monitoring</span>
+                    </div>
+                    <div class="confidence-meter">
+                        <span class="meter-label">Confidence</span>
+                        <div class="meter-bar">
+                            <div class="meter-fill" id="audio-confidence-bar"></div>
+                        </div>
+                        <span class="meter-value" id="audio-confidence-value">0%</span>
+                    </div>
+                    <div class="detection-class" id="audio-class">
+                        <span class="class-label">Detected:</span>
+                        <span class="class-value" id="audio-class-value">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Motion Detection Card -->
+            <div class="status-card" id="motion-card">
+                <div class="card-header">
+                    <span class="card-icon">📹</span>
+                    <span class="card-title">Motion Detection</span>
+                </div>
+                <div class="card-body">
+                    <div class="detection-status" id="motion-status">
+                        <span class="status-label">Status</span>
+                        <span class="status-value" id="motion-status-value">Idle</span>
+                    </div>
+                    <div class="confidence-meter">
+                        <span class="meter-label">Confidence</span>
+                        <div class="meter-bar">
+                            <div class="meter-fill" id="motion-confidence-bar"></div>
+                        </div>
+                        <span class="meter-value" id="motion-confidence-value">0%</span>
+                    </div>
+                    <div class="detection-class" id="motion-type">
+                        <span class="class-label">Type:</span>
+                        <span class="class-value" id="motion-type-value">--</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alert Status Card -->
+            <div class="status-card" id="alert-card">
+                <div class="card-header">
+                    <span class="card-icon">🔔</span>
+                    <span class="card-title">Alert System</span>
+                </div>
+                <div class="card-body">
+                    <div class="sensitivity-control">
+                        <span class="control-label">Sensitivity</span>
+                        <div class="sensitivity-buttons">
+                            <button class="sens-btn" data-level="low" onclick="setSensitivity('low')">Low</button>
+                            <button class="sens-btn active" data-level="medium" onclick="setSensitivity('medium')">Med</button>
+                            <button class="sens-btn" data-level="high" onclick="setSensitivity('high')">High</button>
+                        </div>
+                    </div>
+                    <div class="alert-stats">
+                        <div class="stat-item">
+                            <span class="stat-value" id="total-alerts">0</span>
+                            <span class="stat-label">Total Alerts</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="crying-alerts">0</span>
+                            <span class="stat-label">Crying</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-value" id="motion-alerts">0</span>
+                            <span class="stat-label">Motion</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Audio Controls -->
+        <div class="audio-controls">
+            <button id="start-audio-btn" class="audio-btn start">
+                <span class="btn-icon">🔈</span>
+                <span>Start Audio</span>
+            </button>
+            <button id="stop-audio-btn" class="audio-btn stop hidden">
+                <span class="btn-icon">🔇</span>
+                <span>Stop Audio</span>
+            </button>
+            <p id="audio-hint" class="audio-hint">Click to enable live audio streaming</p>
+        </div>
+
+        <!-- Alert History -->
+        <div class="history-section">
+            <h3>📋 Recent Alerts</h3>
+            <div class="history-list" id="alert-history">
+                <div class="history-empty">No alerts yet</div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <span>ML-Enhanced Baby Monitor</span>
+            <span class="separator">•</span>
+            <span id="last-update">Last update: --</span>
+        </footer>
     </div>
 
     <script>
-        // --- Motion Detection ---
-        function checkMotion() {
-            fetch('/motion_status')
-                .then(response => response.json())
-                .then(data => {
-                    const alertBox = document.getElementById('motion-alert');
-                    if (data.motion) {
-                        alertBox.style.display = 'block';
-                        document.body.classList.add('alert-active');
-                    } else {
-                        alertBox.style.display = 'none';
-                        document.body.classList.remove('alert-active');
-                    }
-                })
-                .catch(error => console.error('Error checking motion:', error));
-        }
-        setInterval(checkMotion, 1000);
-
-
-        // --- PCM Audio Player ---
+        // =================================================================
+        // STATE
+        // =================================================================
         let audioContext;
         let isPlaying = false;
         let abortController;
+        let currentSensitivity = 'medium';
 
+        // =================================================================
+        // ML STATUS POLLING
+        // =================================================================
+        async function updateMLStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                updateAudioUI(data.audio);
+                updateMotionUI(data.motion);
+                updateAlertUI(data.alert);
+                
+                document.getElementById('last-update').textContent = 
+                    `Last update: ${new Date().toLocaleTimeString()}`;
+                
+            } catch (error) {
+                console.error('Status update error:', error);
+                document.getElementById('connection-status').classList.add('disconnected');
+            }
+        }
+
+        function updateAudioUI(audio) {
+            const card = document.getElementById('audio-card');
+            const statusValue = document.getElementById('audio-status-value');
+            const confidenceBar = document.getElementById('audio-confidence-bar');
+            const confidenceValue = document.getElementById('audio-confidence-value');
+            const classValue = document.getElementById('audio-class-value');
+            
+            const confidence = Math.round(audio.confidence * 100);
+            
+            if (audio.is_crying) {
+                card.classList.add('alert-active');
+                statusValue.textContent = '🔴 Crying Detected';
+                statusValue.className = 'status-value crying';
+            } else {
+                card.classList.remove('alert-active');
+                statusValue.textContent = '🟢 Quiet';
+                statusValue.className = 'status-value quiet';
+            }
+            
+            confidenceBar.style.width = `${confidence}%`;
+            confidenceBar.className = `meter-fill ${getConfidenceClass(confidence)}`;
+            confidenceValue.textContent = `${confidence}%`;
+            classValue.textContent = audio.detected_class || '--';
+        }
+
+        function updateMotionUI(motion) {
+            const card = document.getElementById('motion-card');
+            const statusValue = document.getElementById('motion-status-value');
+            const confidenceBar = document.getElementById('motion-confidence-bar');
+            const confidenceValue = document.getElementById('motion-confidence-value');
+            const typeValue = document.getElementById('motion-type-value');
+            const breathingIndicator = document.getElementById('breathing-indicator');
+            const motionIndicator = document.getElementById('motion-indicator');
+            
+            const confidence = Math.round(motion.confidence * 100);
+            
+            if (motion.detected) {
+                card.classList.add('alert-active');
+                statusValue.textContent = '🔴 Motion Detected';
+                statusValue.className = 'status-value motion';
+                motionIndicator.querySelector('.indicator-text').textContent = 
+                    `Motion: ${motion.type}`;
+            } else {
+                card.classList.remove('alert-active');
+                statusValue.textContent = '🟢 Idle';
+                statusValue.className = 'status-value idle';
+                motionIndicator.querySelector('.indicator-text').textContent = 'Motion: Idle';
+            }
+            
+            confidenceBar.style.width = `${confidence}%`;
+            confidenceBar.className = `meter-fill ${getConfidenceClass(confidence)}`;
+            confidenceValue.textContent = `${confidence}%`;
+            typeValue.textContent = motion.type || '--';
+            
+            // Update breathing indicator
+            if (motion.breathing_detected) {
+                breathingIndicator.classList.add('active');
+                breathingIndicator.querySelector('.indicator-text').textContent = 
+                    `Breathing: ${motion.breathing_rate} bpm`;
+            } else {
+                breathingIndicator.classList.remove('active');
+                breathingIndicator.querySelector('.indicator-text').textContent = 'Breathing: --';
+            }
+        }
+
+        function updateAlertUI(alert) {
+            const banner = document.getElementById('ml-alert-banner');
+            const message = document.getElementById('alert-message');
+            const confidence = document.getElementById('alert-confidence');
+            
+            // Update stats
+            if (alert.stats) {
+                document.getElementById('total-alerts').textContent = alert.stats.total_alerts;
+                document.getElementById('crying-alerts').textContent = alert.stats.crying_alerts;
+                document.getElementById('motion-alerts').textContent = alert.stats.motion_alerts;
+            }
+            
+            // Update sensitivity buttons
+            updateSensitivityUI(alert.sensitivity);
+            
+            // Show/hide alert banner
+            if (alert.has_alert && alert.current_alert && !alert.current_alert.acknowledged) {
+                banner.classList.remove('hidden');
+                banner.className = `alert-banner ${alert.current_alert.priority}`;
+                message.textContent = alert.current_alert.message;
+                confidence.textContent = `${Math.round(alert.current_alert.confidence * 100)}%`;
+                
+                // Add body class for background effect
+                document.body.classList.add('alert-active');
+                document.body.setAttribute('data-alert-priority', alert.current_alert.priority);
+            } else {
+                banner.classList.add('hidden');
+                document.body.classList.remove('alert-active');
+                document.body.removeAttribute('data-alert-priority');
+            }
+        }
+
+        function getConfidenceClass(confidence) {
+            if (confidence >= 70) return 'high';
+            if (confidence >= 40) return 'medium';
+            return 'low';
+        }
+
+        function updateSensitivityUI(level) {
+            document.querySelectorAll('.sens-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.level === level);
+            });
+            currentSensitivity = level;
+        }
+
+        // =================================================================
+        // ALERT HISTORY
+        // =================================================================
+        async function updateAlertHistory() {
+            try {
+                const response = await fetch('/api/alert_history?limit=5');
+                const history = await response.json();
+                
+                const container = document.getElementById('alert-history');
+                
+                if (history.length === 0) {
+                    container.innerHTML = '<div class="history-empty">No alerts yet</div>';
+                    return;
+                }
+                
+                container.innerHTML = history.map(alert => `
+                    <div class="history-item ${alert.priority}">
+                        <span class="history-time">${formatTime(alert.timestamp)}</span>
+                        <span class="history-type">${getAlertIcon(alert.type)}</span>
+                        <span class="history-message">${alert.message}</span>
+                    </div>
+                `).join('');
+                
+            } catch (error) {
+                console.error('History update error:', error);
+            }
+        }
+
+        function formatTime(timestamp) {
+            return new Date(timestamp * 1000).toLocaleTimeString();
+        }
+
+        function getAlertIcon(type) {
+            const icons = {
+                'crying': '😢',
+                'motion': '🏃',
+                'combined': '⚠️',
+                'no_motion': '😴',
+                'no_breathing': '🚨'
+            };
+            return icons[type] || '🔔';
+        }
+
+        // =================================================================
+        // API ACTIONS
+        // =================================================================
+        async function acknowledgeAlert() {
+            try {
+                await fetch('/api/acknowledge', { method: 'POST' });
+                document.getElementById('ml-alert-banner').classList.add('hidden');
+                document.body.classList.remove('alert-active');
+            } catch (error) {
+                console.error('Acknowledge error:', error);
+            }
+        }
+
+        async function setSensitivity(level) {
+            try {
+                await fetch('/api/sensitivity', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level })
+                });
+                updateSensitivityUI(level);
+            } catch (error) {
+                console.error('Sensitivity update error:', error);
+            }
+        }
+
+        // =================================================================
+        // PCM AUDIO PLAYER
+        // =================================================================
         const startBtn = document.getElementById('start-audio-btn');
         const stopBtn = document.getElementById('stop-audio-btn');
-        const statusText = document.getElementById('audio-status');
+        const audioHint = document.getElementById('audio-hint');
 
         async function startAudio() {
             try {
                 if (!window.AudioContext && !window.webkitAudioContext) {
-                    statusText.textContent = "Web Audio API not supported on this browser.";
+                    audioHint.textContent = "Web Audio API not supported.";
                     return;
                 }
 
@@ -76,20 +386,20 @@
                 isPlaying = true;
                 abortController = new AbortController();
                 
-                startBtn.style.display = 'none';
-                stopBtn.style.display = 'inline-block';
-                statusText.textContent = "Connecting to stream...";
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                audioHint.textContent = "Connecting...";
 
                 const response = await fetch('/audio_feed', {
                     signal: abortController.signal
                 });
 
                 if (!response.body) {
-                    throw new Error("ReadableStream not supported by this browser.");
+                    throw new Error("ReadableStream not supported.");
                 }
 
                 const reader = response.body.getReader();
-                statusText.textContent = "Live Audio Playing";
+                audioHint.textContent = "🎵 Live audio streaming";
                 
                 let nextStartTime = audioContext.currentTime;
 
@@ -98,12 +408,9 @@
                     if (done) break;
                     if (value) {
                         playPcmChunk(value.buffer, nextStartTime);
-                        // Schedule next chunk
-                        // Calculate duration of this chunk: bytes / (channels * 2 bytes per sample) / sampleRate
                         const duration = value.byteLength / 2 / 44100; 
                         nextStartTime += duration;
                         
-                        // If we fell behind (network lag), jump to now
                         if (nextStartTime < audioContext.currentTime) {
                             nextStartTime = audioContext.currentTime;
                         }
@@ -112,22 +419,20 @@
 
             } catch (err) {
                 if (err.name === 'AbortError') {
-                    console.log('Audio stream stopped by user');
+                    console.log('Audio stopped by user');
                 } else {
                     console.error('Audio Error:', err);
-                    statusText.textContent = "Audio Error: " + err.message;
+                    audioHint.textContent = "Audio Error: " + err.message;
                     stopAudio();
                 }
             }
         }
 
         function playPcmChunk(arrayBuffer, startTime) {
-            // Convert 16-bit integer PCM to Float32
             const int16Array = new Int16Array(arrayBuffer);
             const float32Array = new Float32Array(int16Array.length);
             
             for (let i = 0; i < int16Array.length; i++) {
-                // Normalize to -1.0 to 1.0
                 float32Array[i] = int16Array[i] / 32768; 
             }
 
@@ -145,14 +450,25 @@
             if (abortController) abortController.abort();
             if (audioContext) audioContext.close();
             
-            startBtn.style.display = 'inline-block';
-            stopBtn.style.display = 'none';
-            statusText.textContent = "Audio Stopped";
+            startBtn.classList.remove('hidden');
+            stopBtn.classList.add('hidden');
+            audioHint.textContent = "Audio stopped";
         }
 
         startBtn.addEventListener('click', startAudio);
         stopBtn.addEventListener('click', stopAudio);
 
+        // =================================================================
+        // INITIALIZATION
+        // =================================================================
+        
+        // Start polling
+        setInterval(updateMLStatus, 1000);
+        setInterval(updateAlertHistory, 5000);
+        
+        // Initial load
+        updateMLStatus();
+        updateAlertHistory();
     </script>
 </body>
 </html>
